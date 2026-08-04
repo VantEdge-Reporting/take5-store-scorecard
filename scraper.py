@@ -199,6 +199,13 @@ def pull_store(session, store, retries=3):
             problems = ap.validate(data)
             if problems:
                 raise ValueError(f"validation: {problems}")
+            # Non-fatal footing check: log a report that doesn't reconcile to its Sub Total,
+            # but SAVE it anyway (cars/net/big4 don't depend on that sum). A transient gap
+            # here used to reject the store outright and black-hole its whole day (1515,
+            # 2026-08-04).
+            note = ap.reconcile_note(data)
+            if note:
+                print(f"  [store {store}] NOTE (non-fatal): {note} — saved anyway")
             # Reject a stale report: if the report's own date isn't today (Central),
             # AutoPoll hasn't rolled this store to the new business day yet and is still
             # showing yesterday's totals. Saving it would poison today's early hour with
@@ -270,13 +277,49 @@ def main():
         print(f"  [store {store}] OK - {data.get('store_name')} "
               f"cars={data.get('cars')} net=${data.get('net_sales')}")
 
+    n_att, n_ok, n_fail = len(stores), len(ok), len(failed)
+    fail_list = "; ".join(f"{s} ({why})" for s, why in failed.items()) or "-"
     print("\n===== RUN SUMMARY =====")
-    print(f"  stores attempted : {len(stores)}")
-    print(f"  succeeded ({len(ok)}) : {', '.join(ok) or '-'}")
-    print(f"  failed ({len(failed)})   : "
-          + ("; ".join(f"{s} ({why})" for s, why in failed.items()) or "-"))
-    # Non-zero exit if every store failed -> surfaces as a failed Actions run.
-    return 0 if ok else 2
+    print(f"  stores attempted : {n_att}")
+    print(f"  succeeded ({n_ok}) : {', '.join(ok) or '-'}")
+    print(f"  failed ({n_fail})   : " + fail_list)
+
+    # --- Alerting (added 2026-08-03) --------------------------------------
+    # Make failures PUSH, not just buried in the log. Three layers:
+    #   1. a GitHub error annotation per failed store (shows on the run + commit),
+    #   2. a markdown RUN SUMMARY on the Actions run page ($GITHUB_STEP_SUMMARY),
+    #   3. a NON-ZERO exit when the run is UNHEALTHY -> GitHub's built-in
+    #      "workflow failed" email goes to the repo owner (no extra secrets).
+    # "Unhealthy" = zero stores succeeded, OR more than ALERT_MAX_FAIL stores
+    # failed (repo/Actions variable, default 3). This closes the PARTIAL-failure
+    # gap: previously a run stayed green as long as ANY store succeeded, so a
+    # handful of stores could go dark unnoticed. A small number of flaky stores
+    # stays green but is annotated as a warning so it's still visible.
+    # Tuning: raise ALERT_MAX_FAIL (e.g. to 5) if slow AutoPoll day-rollover
+    # makes early-morning stale rejections noisy.
+    try:
+        max_fail = int(os.environ.get("ALERT_MAX_FAIL", "3"))
+    except ValueError:
+        max_fail = 3
+    unhealthy = (n_ok == 0) or (n_fail > max_fail)
+    for s, why in failed.items():
+        print(f"::error title=Store {s} pull failed::{why}")
+    if failed and not unhealthy:
+        print(f"::warning title=Partial AutoPoll pull::{n_fail} store(s) failed: {fail_list}")
+    summ_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summ_path:
+        status = "❌ UNHEALTHY" if unhealthy else ("⚠️ partial" if failed else "✅ healthy")
+        try:
+            with open(summ_path, "a", encoding="utf-8") as fh:
+                fh.write(f"## AutoPoll hourly pull — {status}\n\n")
+                fh.write(f"- **{now:%Y-%m-%d %H:%M %Z}**\n")
+                fh.write(f"- Attempted **{n_att}** · succeeded **{n_ok}** · failed **{n_fail}**\n")
+                if failed:
+                    fh.write(f"- Failed stores: {fail_list}\n")
+        except OSError:
+            pass
+    # Non-zero exit surfaces as a failed Actions run -> owner is emailed.
+    return 0 if not unhealthy else 2
 
 
 if __name__ == "__main__":
