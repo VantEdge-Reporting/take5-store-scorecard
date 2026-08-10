@@ -189,16 +189,15 @@ table.heat th{background:var(--soft);color:var(--mute);font-weight:700;font-size
 /* V5: Team Huddle (left) + Score cards (right) split on the detail view */
 .hc2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:900px){.hc2{grid-template-columns:1fr}}
-.hbtns{display:flex;flex-direction:column;gap:8px}
-.hbtn{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--navy);color:#fff;border:0;border-left:4px solid var(--red);border-radius:9px;padding:11px 14px;font-size:.86rem;font-weight:800;cursor:pointer;text-align:left;width:100%}
+.hbtn{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--navy);color:#fff;border:0;border-left:4px solid var(--red);border-radius:9px;padding:12px 15px;font-size:.9rem;font-weight:800;cursor:pointer;text-align:left;width:100%}
 .hbtn:hover{background:#1b3555}
-.hbtn small{display:block;color:#9FB4CC;font-weight:600;font-size:.68rem;margin-top:2px}
-.hbtn .go{font-size:.72rem;color:#9FB4CC;font-weight:800;white-space:nowrap}
-/* V5: full-page huddle overlay (opens inside the component; also the download template) */
-.hudov{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;overflow:auto;padding:22px}
+.hbtn small{display:block;color:#9FB4CC;font-weight:600;font-size:.68rem;margin-top:3px}
+.hbtn .go{font-size:.74rem;color:#9FB4CC;font-weight:800;white-space:nowrap}
+/* V5: huddle opens INLINE (right below the split) so there's no scroll jump */
+.hudinline{margin-top:12px}
 .hudbar{max-width:940px;margin:0 auto 10px;display:flex;gap:8px;justify-content:flex-end}
 .hudx{border:0;border-radius:8px;padding:8px 14px;font-size:.8rem;font-weight:800;cursor:pointer}
-.hudx.dl{background:#37D08A;color:#06301F}.hudx.cl{background:#fff;color:var(--navy)}
+.hudx.dl{background:#37D08A;color:#06301F}.hudx.cl{background:#fff;color:var(--navy);border:1px solid var(--line)}
 @media(max-width:820px){.sctiles{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){.detailwrap{grid-template-columns:1fr}.dmsg{position:static}}
 table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
@@ -387,6 +386,7 @@ function detail(){const d=(P.detail||{})[SEL];const el=document.getElementById('
   ${big4Section(d)}
   ${lhpcSection(d)}
   <div class="hc2"><div>${huddleSection(d)}</div><div>${scoreSection(d)}</div></div>
+  <div id="hudinline" class="hudinline" data-open="0"></div>
   ${opsSection(d)}
   </div>${STORE?'':`<aside class="dmsg">${msgPanel(d)}</aside>`}</div>`;
  drawMain(d);
@@ -410,23 +410,40 @@ const HUDDLE_CSS=`
 .hud .hh .b small{display:block;color:#9FB4CC;font-weight:700;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;margin-top:3px}
 .hud .hh .r{text-align:right;font-size:.82rem;line-height:1.5}
 .hud .hh .r b{font-size:1rem}.hud .hh .r small{color:#9FB4CC}
-.hud .lead{padding:12px 22px;background:#F7F9FC;color:#33415C;font-size:.9rem;font-weight:600;border-bottom:1px solid #E2E7EE}
-.hud .kg{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px 22px}
+.hud .lead{padding:11px 22px;background:#F7F9FC;color:#33415C;font-size:.88rem;font-weight:600;border-bottom:1px solid #E2E7EE}
+.hud .focus{margin:14px 22px 0;border-radius:10px;padding:10px 14px;border:1px solid transparent}
+.hud .focus.fr{background:#FBEAE9;border-color:#F0C9C6}.hud .focus.fa{background:#FBF1DF;border-color:#EBD9AE}.hud .focus.fg{background:#E7F3EC;border-color:#BFE0CC}
+.hud .focus .fl{font-size:.58rem;text-transform:uppercase;letter-spacing:.06em;font-weight:800;color:#5B6472}
+.hud .focus .ft2{font-size:.92rem;font-weight:700;color:#14273F;margin-top:2px}
+.hud .mom{margin:9px 22px 0;display:flex;gap:8px;flex-wrap:wrap}
+.hud .mom span{background:#EEF2F7;border-radius:20px;padding:4px 11px;font-size:.72rem;font-weight:800;color:#33415C}
+.hud .kg{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 22px 4px}
 @media(max-width:640px){.hud .kg{grid-template-columns:1fr}}
 .hud .kt{border:1px solid #E2E7EE;border-radius:12px;padding:12px 14px}
 .hud .kt .kl{font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:#5B6472;font-weight:800}
 .hud .kt .kv{font-size:1.9rem;font-weight:800;letter-spacing:-.5px;line-height:1.15;margin-top:2px}
-.hud .kt .ktar{font-size:.72rem;color:#5B6472;font-weight:700}
+.hud .kt .ktar{font-size:.7rem;color:#5B6472;font-weight:700}
 .hud .badge{display:inline-block;background:#E7F3EC;color:#158A5A;font-size:.58rem;font-weight:800;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
-.hud .bars{margin-top:10px;display:flex;flex-direction:column;gap:6px}
-.hud .br{display:grid;grid-template-columns:52px 1fr 56px;align-items:center;gap:8px}
-.hud .br .bn{font-size:.64rem;color:#5B6472;font-weight:700}
-.hud .br .tk{position:relative;height:9px;background:#EEF1F5;border-radius:5px;overflow:hidden}
-.hud .br .fl{position:absolute;left:0;top:0;height:9px;border-radius:5px}
-.hud .br .bv{font-size:.68rem;font-weight:800;text-align:right}
-.hud .need{margin-top:9px;font-size:.76rem;font-weight:700;color:#14273F;background:#FBF4E9;border-radius:8px;padding:6px 9px}
-.hud .cl{padding:4px 22px 20px}
-.hud .cl h4{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:#5B6472;margin:12px 0 8px}
+.hud .blt{position:relative;height:16px;background:#EEF1F5;border-radius:8px;margin-top:10px}
+.hud .blt .zone{position:absolute;top:0;bottom:0;background:rgba(21,138,90,.16)}
+.hud .blt .bfill{position:absolute;left:0;top:0;bottom:0;border-radius:8px}
+.hud .blt .tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:#0F172A}
+.hud .blt .reg{position:absolute;top:50%;width:11px;height:11px;background:#2E6FB7;border:2px solid #fff;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 1px #2E6FB7}
+.hud .need{margin-top:10px;font-size:.75rem;font-weight:700;color:#14273F;background:#FBF4E9;border-radius:8px;padding:6px 9px}
+.hud .bltleg{padding:2px 22px 6px;display:flex;gap:14px;font-size:.64rem;color:#5B6472;font-weight:700;flex-wrap:wrap}
+.hud .chartwrap{padding:8px 22px 6px}
+.hud .cwh{font-size:.74rem;font-weight:800;color:#14273F;margin-bottom:4px}
+.hud .cleg{display:flex;gap:16px;justify-content:center;font-size:.66rem;font-weight:700;color:#5B6472;margin-top:4px}
+.hud .cleg span{display:inline-flex;align-items:center;gap:5px}
+.hud .cleg .lg1::before{content:"";width:13px;height:9px;background:#B5D4F4;border-radius:2px;display:inline-block}
+.hud .cleg .lg2::before{content:"";width:15px;height:0;border-top:2px solid #2E6FB7;display:inline-block}
+.hud .cleg .lg3::before{content:"";width:15px;height:0;border-top:2px dashed #158A5A;display:inline-block}
+.hud .drv2{padding:6px 22px 4px}
+.hud .drv2 h4,.hud .cl h4{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:#5B6472;margin:12px 0 8px}
+.hud .hdrv{border:1px solid #E2E7EE;border-radius:9px;padding:7px 11px;margin-bottom:7px;background:#F7F9FC}
+.hud .hdrv.g{background:#E7F3EC;border-color:#BFE0CC}.hud .hdrv.r{background:#FBEAE9;border-color:#F0C9C6}.hud .hdrv.a{background:#FBF1DF;border-color:#EBD9AE}
+.hud .hdrv .ht{font-weight:800;font-size:.78rem}.hud .hdrv .hm{font-weight:700;font-size:.76rem;margin-top:1px}.hud .hdrv .hs{font-size:.7rem;color:#5B6472;margin-top:1px}
+.hud .cl{padding:2px 22px 20px}
 .hud .clg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 @media(max-width:640px){.hud .clg{grid-template-columns:1fr}}
 .hud .ci{font-size:.8rem;font-weight:600;padding:6px 10px;border-radius:8px;display:flex;gap:7px;align-items:flex-start}
@@ -436,41 +453,81 @@ const HUDDLE_CSS=`
 `;
 function hudColor(s){return s==='g'?'#158A5A':(s==='a'?'#B57611':(s==='r'?'#D0342C':'#5B6472'));}
 function hudFmt(f,v){if(v==null)return '—';if(f==='money0')return '$'+Math.round(v);if(f==='pct')return Math.round(v)+'%';if(f==='lhpc')return (+v).toFixed(2);return Math.round(v);}
-function hudKpiTile(k){const col=hudColor(k.status);
- const vals=[k.you,k.region,k.target].filter(v=>v!=null);const mx=Math.max.apply(null,vals.concat([1]))*1.25;
- const bar=(nm,val,color)=>{const w=val!=null?Math.max(2,Math.min(100,val/mx*100)):0;return `<div class="br"><span class="bn">${nm}</span><div class="tk"><span class="fl" style="width:${w}%;background:${color}"></span></div><span class="bv" style="color:${color}">${hudFmt(k.fmt,val)}</span></div>`;};
- const onT=k.status==='g'?'<span class="badge">on target ✓</span>':'';
- return `<div class="kt"><div class="kl">${k.label}${onT}</div>
-  <div class="kv" style="color:${col}">${hudFmt(k.fmt,k.you)}</div>
-  <div class="ktar">target ${hudFmt(k.fmt,k.target)}</div>
-  <div class="bars">${bar('You',k.you,col)}${bar('Region',k.region,'#2E6FB7')}${bar('Target',k.target,'#5B6472')}</div>
+function hudPct(v,scale){return v==null?null:Math.max(0,Math.min(100,v/scale*100));}
+// Bullet gauge per KPI: your value as a colored fill, target as a dark tick, region avg as a
+// blue dot, and a shaded "good" zone (above target for higher-better KPIs; below target for
+// labor). Reads at a glance and never leaves the target as an under-filled bar.
+function hudBullet(k){const col=hudColor(k.status);const lb=k.lowerBetter;
+ const you=k.you,reg=k.region,tgt=k.target;
+ const base=Math.max(you||0,reg||0,tgt||0,1);
+ const scale=lb?base*1.5:(tgt!=null?Math.max(base,tgt)*1.35:base*1.3);
+ const yp=hudPct(you,scale),tp=hudPct(tgt,scale),rp=hudPct(reg,scale);
+ let zone='';if(tgt!=null){zone=lb?`<span class="zone" style="left:0;width:${tp}%"></span>`:`<span class="zone" style="left:${tp}%;right:0"></span>`;}
+ const fill=you!=null?`<span class="bfill" style="width:${yp}%;background:${col}"></span>`:'';
+ const tick=tgt!=null?`<span class="tick" style="left:${tp}%"></span>`:'';
+ const reg2=reg!=null?`<span class="reg" style="left:${rp}%"></span>`:'';
+ const badge=k.status==='g'?'<span class="badge">on target ✓</span>':'';
+ const tgtTxt=tgt!=null?((lb?'≤':'')+hudFmt(k.fmt,tgt)):'—';
+ return `<div class="kt"><div class="kl">${k.label}${badge}</div>
+  <div class="kv" style="color:${col}">${hudFmt(k.fmt,you)}</div>
+  <div class="ktar">target ${tgtTxt} · region ${hudFmt(k.fmt,reg)}</div>
+  <div class="blt">${zone}${fill}${reg2}${tick}</div>
   <div class="need">${k.need||''}</div></div>`;
+}
+// Inline SVG (no chart lib -> works in the downloaded file offline): typical cars/hour for
+// this weekday as bars, today's actual as a solid line, the rest-of-day projection dashed.
+function hudHourChart(H){const L=(H&&H.labels)||[];if(!L.length)return '<div class="hs">No hourly data yet today.</div>';
+ const avg=H.avg||[],today=H.today||[],proj=H.proj||[];
+ const W=680,Ht=228,ml=32,mr=12,mt=12,mb=26,pw=W-ml-mr,ph=Ht-mt-mb;
+ const all=avg.concat(today.filter(v=>v!=null)).concat(proj.filter(v=>v!=null));
+ const mx=Math.max(1,Math.max.apply(null,all.length?all:[1]))*1.15;
+ const n=L.length,step=pw/n,bw=Math.min(26,step*0.6);
+ const X=i=>ml+step*i+step/2,Y=v=>mt+ph-(v/mx*ph);
+ let g='';for(let t=0;t<=2;t++){const val=mx*t/2,y=Y(val);g+=`<line x1="${ml}" y1="${y.toFixed(1)}" x2="${W-mr}" y2="${y.toFixed(1)}" stroke="#E7ECF2" stroke-width="1"/><text x="${ml-4}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="9" fill="#8A93A2">${Math.round(val)}</text>`;}
+ let bars='';avg.forEach((v,i)=>{if(v==null)return;const h=v/mx*ph;bars+=`<rect x="${(X(i)-bw/2).toFixed(1)}" y="${Y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0,h).toFixed(1)}" rx="2" fill="#B5D4F4"/>`;});
+ let xl='';L.forEach((lab,i)=>{if(i%2===0)xl+=`<text x="${X(i).toFixed(1)}" y="${Ht-8}" text-anchor="middle" font-size="9" fill="#8A93A2">${lab}</text>`;});
+ const poly=(arr,color,dash)=>{const pts=[];let dots='';arr.forEach((v,i)=>{if(v!=null){pts.push(X(i).toFixed(1)+','+Y(v).toFixed(1));dots+=`<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.6" fill="${color}"/>`;}});if(!pts.length)return '';return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2.4"${dash?' stroke-dasharray="6 4"':''}/>`+dots;};
+ return `<svg viewBox="0 0 ${W} ${Ht}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block">${g}${bars}${poly(proj,'#158A5A',true)}${poly(today,'#2E6FB7',false)}<line x1="${ml}" y1="${mt+ph}" x2="${W-mr}" y2="${mt+ph}" stroke="#CBD5E1"/>${xl}</svg>`;
 }
 function renderHuddleCard(kind,d){const H=d.huddle;if(!H)return '<div class="hud"><div class="lead">Huddle data isn\'t ready yet — refresh in a moment.</div></div>';
  const meta=HUDDLE_KINDS[kind]||HUDDLE_KINDS.morning;
+ const wd=(H.date||'').split(',')[0]||'today';
+ const kpis=(H.kpis||[]).map(hudBullet).join('');
+ const f=H.focus||{};const fcls=f.status==='r'?'fr':(f.status==='a'?'fa':'fg');
+ const mo=H.momentum||{};const chips=[];
+ chips.push(`<span>${mo.onTarget!=null?mo.onTarget:'—'} of ${mo.total||4} KPIs on target</span>`);
+ if(mo.best)chips.push(`<span>Best hour ${mo.best.h} · ${mo.best.v} cars</span>`);
+ if(mo.peak)chips.push(`<span>Typical peak ${mo.peak.h}</span>`);
+ const movers=(d.movers||[]).slice(0,4);
+ const moversH=movers.length?movers.map(x=>`<div class="hdrv ${x.st}"><div class="ht">${x.t}</div><div class="hm">${x.m}</div><div class="hs">${x.s||''}</div></div>`).join(''):'<div class="hs">Nothing notable yet — a clean, steady day.</div>';
  const done=H.done||[],todo=H.todo||[];
- const kpis=(H.kpis||[]).map(hudKpiTile).join('');
  const doneH=done.length?done.map(t=>`<div class="ci ok"><span class="m">✓</span><span>${t}</span></div>`).join(''):'<div class="ci ok"><span class="m">—</span><span>Nothing checked off yet.</span></div>';
  const todoH=todo.length?todo.map(t=>`<div class="ci no"><span class="m">•</span><span>${t}</span></div>`).join(''):'<div class="ci ok"><span class="m">✓</span><span>Everything done — great work.</span></div>';
  return `<div class="hud"><div class="hh"><div class="b">${meta.tag}<small>VantEdge Auto · Take 5 Team Huddle</small></div>
    <div class="r"><b>${H.name||''} · #${H.id||''}</b><br>${H.regionName||''}<br><small>live as of ${H.asof||''} · ${H.date||''}</small></div></div>
   <div class="lead">${meta.lead}</div>
+  <div class="focus ${fcls}"><div class="fl">#1 focus this huddle</div><div class="ft2"><b>${f.label||''}</b>${f.msg?(' — '+f.msg):''}</div></div>
+  <div class="mom">${chips.join('')}</div>
   <div class="kg">${kpis}</div>
+  <div class="bltleg"><span>▮ your store</span><span>● region avg</span><span>│ target</span><span style="color:#158A5A">▨ target zone</span></div>
+  <div class="chartwrap"><div class="cwh">Cars by hour — typical ${wd} (last 4 weeks) vs today</div>${hudHourChart(H.hourly||{})}
+   <div class="cleg"><span class="lg1">Typical</span><span class="lg2">Today</span><span class="lg3">Projected</span></div></div>
+  <div class="drv2"><h4>What's driving value</h4>${moversH}</div>
   <div class="cl"><h4>Today's checklist</h4><div class="clg"><div>${doneH}</div><div>${todoH}</div></div></div>
-  <div class="ft">Bars compare your store to the region average (anonymous) and the target. Green = at or above target. Live snapshot — refreshes with the dashboard.</div></div>`;
+  <div class="ft">You vs region average (anonymous) vs target on each KPI. Green = meeting target — labor is on-target at or below 1.10, the others at or above. Live snapshot, refreshes with the dashboard.</div></div>`;
 }
-function huddleSection(d){if(!d.huddle)return '';
- const b=(kind,label,sub)=>`<button class="hbtn" onclick="openHuddle('${kind}')"><span>${label}<small>${sub}</small></span><span class="go">Open ▸</span></button>`;
- return `<div class="panel"><div class="mhead"><div class="acc" style="background:${C.red}"></div><span class="t">Team Huddle</span><span class="n">live discussion cards</span></div>
-  <div class="hbtns">${b('morning','Morning Huddle','Set the day · targets & region')}${b('half','Half-Time Huddle','Know the score at midday')}${b('close','3:30 Huddle','Final push to hit target')}</div></div>`;
+function huddleSection(d){if(!d.huddle)return '';const p=d.huddle.period||'morning';const meta=HUDDLE_KINDS[p]||HUDDLE_KINDS.morning;
+ return `<div class="panel"><div class="mhead"><div class="acc" style="background:${C.red}"></div><span class="t">Team Huddle</span><span class="n">live discussion card</span></div>
+  <button class="hbtn" onclick="toggleHuddle('${p}')"><span>${meta.tag}<small>KPIs vs region &amp; target · hourly pace · focus &amp; checklist</small></span><span class="go" id="hudtoggle">Open ▸</span></button></div>`;
 }
-function openHuddle(kind){closeHuddle();const d=(P.detail||{})[SEL];if(!d)return;
+// Opens INLINE right below the split (no fixed overlay), so there's no scroll-to-top jump.
+function toggleHuddle(kind){const box=document.getElementById('hudinline');if(!box)return;
+ const t=document.getElementById('hudtoggle');
+ if(box.getAttribute('data-open')==='1'){box.innerHTML='';box.setAttribute('data-open','0');if(t)t.textContent='Open ▸';fitLater();return;}
+ const d=(P.detail||{})[SEL];if(!d)return;
  if(!document.getElementById('hudcss')){const s=document.createElement('style');s.id='hudcss';s.textContent=HUDDLE_CSS;document.head.appendChild(s);}
- const ov=document.createElement('div');ov.className='hudov';ov.id='hudov';
- ov.innerHTML=`<div class="hudbar"><button class="hudx dl" onclick="downloadHuddle('${kind}')">⬇ Download</button><button class="hudx cl" onclick="closeHuddle()">✕ Close</button></div>`+renderHuddleCard(kind,d);
- ov.addEventListener('click',e=>{if(e.target===ov)closeHuddle();});
- document.body.appendChild(ov);}
-function closeHuddle(){const o=document.getElementById('hudov');if(o)o.remove();}
+ box.innerHTML=`<div class="hudbar"><button class="hudx dl" onclick="downloadHuddle('${kind}')">⬇ Download</button><button class="hudx cl" onclick="toggleHuddle('${kind}')">✕ Close</button></div>`+renderHuddleCard(kind,d);
+ box.setAttribute('data-open','1');if(t)t.textContent='Close ✕';fitLater();}
 function downloadHuddle(kind){const d=(P.detail||{})[SEL];if(!d)return;const card=renderHuddleCard(kind,d);
  const meta=HUDDLE_KINDS[kind]||HUDDLE_KINDS.morning;const nm=(d.huddle&&d.huddle.name)||'Store';
  const doc='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+nm+' — '+meta.tag+'</title><style>body{margin:0;background:#F4F6F9;padding:22px}'+HUDDLE_CSS+'</style></head><body>'+card+'</body></html>';

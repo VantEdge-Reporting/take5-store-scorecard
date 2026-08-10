@@ -378,7 +378,7 @@ def build_web_payload(tier, allowed, scope_label, stamp):
             comp_by_date[dd] = {}
     rows, detail, hstores, newest, idx = [], {}, [], None, 0
     # V5: retain per-store pieces for the Team Huddle payload (built after region avgs below).
-    arow_by_store, sp_by_store, done_today = {}, {}, {}
+    arow_by_store, sp_by_store, done_today, hourly_by_store = {}, {}, {}, {}
     for s, td, hist, daily in fetched:
         try:
             sp = calc.build_store(s, CITY[s], region_of(s), td, hist, now, tgts.get(s))
@@ -391,6 +391,10 @@ def build_web_payload(tier, allowed, scope_label, stamp):
                      # H4: per-store net pace so the overview can aggregate a Total-net vs-4wk %
                      "netPace": sp["net"].get("pace_pct")})
         arow_by_store[s] = ar; sp_by_store[s] = sp  # V5: for the huddle payload
+        try:
+            hourly_by_store[s] = calc.huddle_hourly(td, hist, now)  # V5: huddle hourly chart
+        except Exception:
+            hourly_by_store[s] = {}
         d = _web_detail(sp)
         d["messages"] = [{"from": m.get("from_user"), "body": m.get("body"),
                           "when": _fmt_sent(m.get("sent_at"))}
@@ -454,16 +458,41 @@ def build_web_payload(tier, allowed, scope_label, stamp):
                     acc[kk].append(row[kk])
         region_avg[r] = {kk: (sum(v) / len(v) if v else None) for kk, v in acc.items()}
     tl_today = TASKS_BY_DOW.get(now.weekday(), [])
+    # Single rotating huddle, picked by time of day: morning < 11a, half-time 11a–3p, 3:30 after.
+    _h = now.hour
+    period = "morning" if _h < 11 else ("half" if _h < 15 else "close")
+    _order = {"r": 0, "a": 1, "flat": 2, "g": 3}
     for s in ok_stores:
         sp = sp_by_store.get(s); d = detail.get(s)
         if not sp or not d:
             continue
         r = region_of(s)
+        kpis = calc.huddle_kpis(sp, region_avg.get(r, {}))
+        hourly = hourly_by_store.get(s, {})
+        # momentum: on-target tally + today's best cars hour + the typical peak hour
+        on_target = sum(1 for k in kpis if k["status"] == "g")
+        best = None
+        for lab, val in zip(hourly.get("labels", []), hourly.get("today") or []):
+            if val is not None and (best is None or val > best[1]):
+                best = (lab, val)
+        peak = None
+        for lab, val in zip(hourly.get("labels", []), hourly.get("avg") or []):
+            if val is not None and (peak is None or val > peak[1]):
+                peak = (lab, val)
+        momentum = {"onTarget": on_target, "total": len(kpis),
+                    "best": ({"h": best[0], "v": round(best[1])} if best else None),
+                    "peak": ({"h": peak[0], "v": round(peak[1])} if peak else None)}
+        # #1 focus = the KPI furthest from target (worst status first)
+        cand = sorted(kpis, key=lambda k: _order.get(k["status"], 2))
+        if cand and cand[0]["status"] in ("r", "a"):
+            focus = {"label": cand[0]["label"], "msg": cand[0]["need"], "status": cand[0]["status"]}
+        else:
+            focus = {"label": "On track", "msg": "All four at or near target — keep the momentum.", "status": "g"}
         done_t = done_today.get(s, [])
         todo_t = [t for t in tl_today if t not in set(done_t)]
-        d["huddle"] = {"name": CITY[s], "id": s, "regionName": r,
+        d["huddle"] = {"name": CITY[s], "id": s, "regionName": r, "period": period,
                        "asof": now.strftime("%-I:%M %p"), "date": now.strftime("%A, %b %-d"),
-                       "kpis": calc.huddle_kpis(sp, region_avg.get(r, {})),
+                       "kpis": kpis, "hourly": hourly, "focus": focus, "momentum": momentum,
                        "done": done_t, "todo": todo_t}
     liveR = [r for r in rows if r["cars"] is not None]
     tc = sum(r["cars"] for r in liveR); tn = sum(r["net"] or 0 for r in liveR)

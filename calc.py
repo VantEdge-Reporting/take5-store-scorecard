@@ -719,3 +719,33 @@ def huddle_kpis(sp, region_avg=None):
                 "target": round(tgt, 2), "fmt": "lhpc", "status": status,
                 "lowerBetter": True, "need": need})
     return out
+
+
+def huddle_hourly(today_rows, hist, now):
+    """Per-hour cars for the huddle chart, aligned to the store's open hours for today's
+    weekday: `avg` = typical cars each hour (recency-weighted 4-week same-weekday average,
+    the same normal-day shape the projection uses) drawn as bars; `today` = today's actual
+    cars that hour (None for hours not yet reached); `proj` = projected cars for the rest of
+    the day (starts at the current hour so the line connects to actual). Lets the team see
+    what a normal <weekday> looks like hour by hour and where today sits against it."""
+    weekday = now.weekday(); o, c = HOURS[weekday]; hours = list(range(o, c + 1))
+    now_hour = data_now_hour(today_rows, o, c)
+    td = row_date(today_rows[-1]) if today_rows else None
+    wn = weighted_norm(hist, weekday, "cars", td)
+    tpp = to_per_period(cum_by_hour(today_rows, "cars"))
+    ccum = cum_by_hour(today_rows, "cars")
+    sofar = ccum[max(ccum)] if ccum else 0.0
+    wf = sum(wn.get(h, 0) for h in hours if h <= now_hour)
+    pf = _clamp(sofar / wf) if wf else 1.0
+    avg = [round(wn.get(h, 0.0), 1) for h in hours]
+    today = [(round(tpp.get(h, 0.0), 1) if h <= now_hour else None) for h in hours]
+    proj = []
+    for h in hours:
+        if h < now_hour:
+            proj.append(None)
+        elif h == now_hour:
+            proj.append(round(tpp.get(h, 0.0), 1))   # connect to today's actual
+        else:
+            proj.append(round(wn.get(h, 0.0) * pf, 1))
+    return {"labels": [hour_label(h) for h in hours], "avg": avg, "today": today, "proj": proj,
+            "nowIdx": (hours.index(now_hour) if now_hour in hours else None)}
