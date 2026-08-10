@@ -463,10 +463,16 @@ function hudNice(v,fmt){if(!(v>0))return 1;if(fmt==='lhpc')return Math.ceil(v*4)
 // with the target marked as a labeled line. Colour is the verdict (green = meeting target).
 // Labor is lower-is-better (noted on the tile). Region average is plain text, not a marker,
 // so the bar itself carries just two things: your value and the target line.
+// Axis max sits a sensible margin PAST the target (so the scale relates to the target
+// instead of jumping to a round 100): cars target+10, ARO target+$20, Big 4 target+10 pts,
+// Labor target+0.30. Never below your/region value so the bar can't overflow.
+const HUD_BUF={cars:10,aro:20,big4:10,lhpc:0.30};
 function hudGauge(k){const col=hudColor(k.status);const lb=k.lowerBetter;
  const you=k.you,tgt=k.target,reg=k.region;
- const vals=[you,tgt,reg].filter(v=>v!=null);
- let smax=vals.length?hudNice(Math.max.apply(null,vals)*1.1,k.fmt):1;if(!(smax>0))smax=1;
+ let smax;
+ if(tgt!=null&&HUD_BUF[k.key]!=null){smax=Math.max(tgt+HUD_BUF[k.key],you||0,reg||0);}
+ else{const vals=[you,tgt,reg].filter(v=>v!=null);smax=vals.length?hudNice(Math.max.apply(null,vals)*1.1,k.fmt):1;}
+ if(!(smax>0))smax=1;
  const pos=v=>v==null?null:Math.max(0,Math.min(100,v/smax*100));
  const yp=pos(you),tp=pos(tgt);
  const fill=you!=null?`<span class="ggfill" style="width:${yp}%;background:${col}"></span>`:'';
@@ -475,11 +481,11 @@ function hudGauge(k){const col=hudColor(k.status);const lb=k.lowerBetter;
  const dir=lb?'<span class="dir">↓ lower is better</span>':'';
  const tgtTxt=tgt!=null?((lb?'≤':'')+hudFmt(k.fmt,tgt)):'—';
  const regTxt=reg!=null?(' · region '+hudFmt(k.fmt,reg)):'';
- const ax=`<div class="ggax"><span style="left:0">0</span><span style="left:50%;transform:translateX(-50%)">${hudFmt(k.fmt,smax/2)}</span><span style="left:100%;transform:translateX(-100%)">${hudFmt(k.fmt,smax)}</span><span class="gm" style="left:25%"></span><span class="gm" style="left:75%"></span></div>`;
+ let axs='';for(let i=0;i<=4;i++){const v=smax*i/4;const tf=i===0?'':(i===4?'transform:translateX(-100%)':'transform:translateX(-50%)');axs+=`<span style="left:${i*25}%;${tf}">${hudFmt(k.fmt,v)}</span>`;}
  return `<div class="kt"><div class="kl">${k.label}${badge}${dir}</div>
   <div class="kv" style="color:${col}">${hudFmt(k.fmt,you)}</div>
   <div class="ktar">target ${tgtTxt}${regTxt}</div>
-  <div class="gg">${fill}${tick}</div>${ax}
+  <div class="gg">${fill}${tick}</div><div class="ggax">${axs}</div>
   <div class="need">${k.need||''}</div></div>`;
 }
 // Inline SVG (no chart lib -> works in the downloaded file offline): typical cars/hour for
@@ -492,36 +498,53 @@ function hudHourChart(H){const L=(H&&H.labels)||[];if(!L.length)return '<div cla
  const n=L.length,step=pw/n,bw=Math.min(26,step*0.6);
  const X=i=>ml+step*i+step/2,Y=v=>mt+ph-(v/mx*ph);
  let g='';for(let t=0;t<=2;t++){const val=mx*t/2,y=Y(val);g+=`<line x1="${ml}" y1="${y.toFixed(1)}" x2="${W-mr}" y2="${y.toFixed(1)}" stroke="#E7ECF2" stroke-width="1"/><text x="${ml-4}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="9" fill="#8A93A2">${Math.round(val)}</text>`;}
- let bars='';avg.forEach((v,i)=>{if(v==null)return;const h=v/mx*ph;bars+=`<rect x="${(X(i)-bw/2).toFixed(1)}" y="${Y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0,h).toFixed(1)}" rx="2" fill="#B5D4F4"/>`;});
+ let bars='';avg.forEach((v,i)=>{if(v==null)return;const h=v/mx*ph,y=Y(v);bars+=`<rect x="${(X(i)-bw/2).toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0,h).toFixed(1)}" rx="2" fill="#B5D4F4"/>`;if(v>=1)bars+=`<text x="${X(i).toFixed(1)}" y="${(y-2.5).toFixed(1)}" text-anchor="middle" font-size="7.5" font-weight="700" fill="#5B6472">${Math.round(v)}</text>`;});
  let xl='';L.forEach((lab,i)=>{xl+=`<text x="${X(i).toFixed(1)}" y="${Ht-8}" text-anchor="middle" font-size="8" fill="#8A93A2">${lab}</text>`;});
  const poly=(arr,color,dash)=>{const pts=[];let dots='';arr.forEach((v,i)=>{if(v!=null){pts.push(X(i).toFixed(1)+','+Y(v).toFixed(1));dots+=`<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.6" fill="${color}"/>`;}});if(!pts.length)return '';return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2.4"${dash?' stroke-dasharray="6 4"':''}/>`+dots;};
  return `<svg viewBox="0 0 ${W} ${Ht}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block">${g}${bars}${poly(proj,'#158A5A',true)}${poly(today,'#2E6FB7',false)}<line x1="${ml}" y1="${mt+ph}" x2="${W-mr}" y2="${mt+ph}" stroke="#CBD5E1"/>${xl}</svg>`;
 }
+// Driver cards. Morning uses the ARO "lever" drivers (d.drivers: title/status/message) —
+// forward-looking "what COULD drive value"; mid-day/close use today's movers (d.movers:
+// t/st/m/s) — "what's driving value" right now.
+function hudDrivers(list,asDrivers){
+ if(!list||!list.length)return '<div class="hs">Nothing notable yet — a clean, steady day.</div>';
+ return list.slice(0,4).map(x=>{const st=asDrivers?x.status:x.st,t=asDrivers?x.title:x.t,m=asDrivers?x.message:x.m,s=asDrivers?'':x.s;
+   return `<div class="hdrv ${st}"><div class="ht">${t}</div><div class="hm">${m}</div>${s?`<div class="hs">${s}</div>`:''}</div>`;}).join('');
+}
 function renderHuddleCard(kind,d){const H=d.huddle;if(!H)return '<div class="hud"><div class="lead">Huddle data isn\'t ready yet — refresh in a moment.</div></div>';
  const meta=HUDDLE_KINDS[kind]||HUDDLE_KINDS.morning;
+ const isM=(kind==='morning');
  const wd=(H.date||'').split(',')[0]||'today';
+ const done=H.done||[],todo=H.todo||[];
+ const doneH=done.length?done.map(t=>`<div class="ci ok"><span class="m">✓</span><span>${t}</span></div>`).join(''):'<div class="ci ok"><span class="m">—</span><span>Nothing checked off yet.</span></div>';
+ const todoH=todo.length?todo.map(t=>`<div class="ci no"><span class="m">•</span><span>${t}</span></div>`).join(''):'<div class="ci ok"><span class="m">✓</span><span>Everything done — great work.</span></div>';
+ const header=`<div class="hh"><div class="b">${meta.tag}<small>VantEdge Auto · Take 5 Team Huddle</small></div>
+   <div class="r"><b>${H.name||''} · #${H.id||''}</b><br>${H.regionName||''}<br><small>live as of ${H.asof||''} · ${H.date||''}</small></div></div>
+  <div class="lead">${meta.lead}</div>`;
+ const chartBlock=`<div class="chartwrap"><div class="cwh">Cars by hour — typical ${wd} (last 4 weeks)${isM?'':' vs today'}</div>${hudHourChart(H.hourly||{})}
+   <div class="cleg"><span class="lg1">Typical</span><span class="lg2">Today</span><span class="lg3">Projected</span></div></div>`;
+ const clBlock=`<div class="cl"><h4>Today's checklist</h4><div class="clg"><div>${doneH}</div><div>${todoH}</div></div></div>`;
+ if(isM){
+  // First meeting of the day — the store just opened, so no KPIs yet. Set the day with the
+  // typical hourly pattern, the value levers to focus on, and the checklist.
+  const drvBlock=`<div class="drv2"><h4>What could drive value today</h4>${hudDrivers(d.drivers,true)}</div>`;
+  return `<div class="hud">${header}${chartBlock}${drvBlock}${clBlock}
+   <div class="ft">Morning huddle — set the day. The bars show a typical ${wd}; KPIs vs target start at the mid-day huddle once the day is underway. Live snapshot.</div></div>`;
+ }
  const kpis=(H.kpis||[]).map(hudGauge).join('');
  const f=H.focus||{};const fcls=f.status==='r'?'fr':(f.status==='a'?'fa':'fg');
  const mo=H.momentum||{};const chips=[];
  chips.push(`<span>${mo.onTarget!=null?mo.onTarget:'—'} of ${mo.total||4} KPIs on target</span>`);
  if(mo.best)chips.push(`<span>Best hour ${mo.best.h} · ${mo.best.v} cars</span>`);
  if(mo.peak)chips.push(`<span>Typical peak ${mo.peak.h}</span>`);
- const movers=(d.movers||[]).slice(0,4);
- const moversH=movers.length?movers.map(x=>`<div class="hdrv ${x.st}"><div class="ht">${x.t}</div><div class="hm">${x.m}</div><div class="hs">${x.s||''}</div></div>`).join(''):'<div class="hs">Nothing notable yet — a clean, steady day.</div>';
- const done=H.done||[],todo=H.todo||[];
- const doneH=done.length?done.map(t=>`<div class="ci ok"><span class="m">✓</span><span>${t}</span></div>`).join(''):'<div class="ci ok"><span class="m">—</span><span>Nothing checked off yet.</span></div>';
- const todoH=todo.length?todo.map(t=>`<div class="ci no"><span class="m">•</span><span>${t}</span></div>`).join(''):'<div class="ci ok"><span class="m">✓</span><span>Everything done — great work.</span></div>';
- return `<div class="hud"><div class="hh"><div class="b">${meta.tag}<small>VantEdge Auto · Take 5 Team Huddle</small></div>
-   <div class="r"><b>${H.name||''} · #${H.id||''}</b><br>${H.regionName||''}<br><small>live as of ${H.asof||''} · ${H.date||''}</small></div></div>
-  <div class="lead">${meta.lead}</div>
+ return `<div class="hud">${header}
   <div class="focus ${fcls}"><div class="fl">#1 focus this huddle</div><div class="ft2"><b>${f.label||''}</b>${f.msg?(' — '+f.msg):''}</div></div>
   <div class="mom">${chips.join('')}</div>
   <div class="kg">${kpis}</div>
   <div class="bltleg">Each bar is your current value on its own scale (numbers below the bar); the marked line is the <b>target</b>. Green = meeting target. Region average is noted above each bar for context.</div>
-  <div class="chartwrap"><div class="cwh">Cars by hour — typical ${wd} (last 4 weeks) vs today</div>${hudHourChart(H.hourly||{})}
-   <div class="cleg"><span class="lg1">Typical</span><span class="lg2">Today</span><span class="lg3">Projected</span></div></div>
-  <div class="drv2"><h4>What's driving value</h4>${moversH}</div>
-  <div class="cl"><h4>Today's checklist</h4><div class="clg"><div>${doneH}</div><div>${todoH}</div></div></div>
+  ${chartBlock}
+  <div class="drv2"><h4>What's driving value</h4>${hudDrivers(d.movers,false)}</div>
+  ${clBlock}
   <div class="ft">You vs region average (anonymous) vs target on each KPI. Green = meeting target — labor is on-target at or below 1.10, the others at or above. Live snapshot, refreshes with the dashboard.</div></div>`;
 }
 function huddleSection(d){if(!d.huddle)return '';const p=d.huddle.period||'morning';const meta=HUDDLE_KINDS[p]||HUDDLE_KINDS.morning;
