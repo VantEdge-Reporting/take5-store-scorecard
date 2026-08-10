@@ -186,6 +186,19 @@ table.heat th{background:var(--soft);color:var(--mute);font-weight:700;font-size
 .scrow{display:flex;gap:10px;flex-wrap:wrap}
 .scbtn{background:var(--navy);color:#fff;border-radius:8px;padding:9px 16px;font-size:.82rem;font-weight:800;text-decoration:none;cursor:pointer}
 .scbtn.dis{background:#CBD5E1;color:#fff;cursor:default}
+/* V5: Team Huddle (left) + Score cards (right) split on the detail view */
+.hc2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:900px){.hc2{grid-template-columns:1fr}}
+.hbtns{display:flex;flex-direction:column;gap:8px}
+.hbtn{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--navy);color:#fff;border:0;border-left:4px solid var(--red);border-radius:9px;padding:11px 14px;font-size:.86rem;font-weight:800;cursor:pointer;text-align:left;width:100%}
+.hbtn:hover{background:#1b3555}
+.hbtn small{display:block;color:#9FB4CC;font-weight:600;font-size:.68rem;margin-top:2px}
+.hbtn .go{font-size:.72rem;color:#9FB4CC;font-weight:800;white-space:nowrap}
+/* V5: full-page huddle overlay (opens inside the component; also the download template) */
+.hudov{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;overflow:auto;padding:22px}
+.hudbar{max-width:940px;margin:0 auto 10px;display:flex;gap:8px;justify-content:flex-end}
+.hudx{border:0;border-radius:8px;padding:8px 14px;font-size:.8rem;font-weight:800;cursor:pointer}
+.hudx.dl{background:#37D08A;color:#06301F}.hudx.cl{background:#fff;color:var(--navy)}
 @media(max-width:820px){.sctiles{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){.detailwrap{grid-template-columns:1fr}.dmsg{position:static}}
 table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
@@ -373,7 +386,7 @@ function detail(){const d=(P.detail||{})[SEL];const el=document.getElementById('
   ${cumSection('Net revenue',d.net,C.green,'net',d)}
   ${big4Section(d)}
   ${lhpcSection(d)}
-  ${scoreSection(d)}
+  <div class="hc2"><div>${huddleSection(d)}</div><div>${scoreSection(d)}</div></div>
   ${opsSection(d)}
   </div>${STORE?'':`<aside class="dmsg">${msgPanel(d)}</aside>`}</div>`;
  drawMain(d);
@@ -384,6 +397,86 @@ function scoreSection(d){const sc=d.scorecards||{};
  return `<div class="panel"><div class="mhead"><div class="acc" style="background:${C.navy}"></div><span class="t">Score cards</span><span class="n">printable cards</span></div>
   <div class="scrow">${dl(sc.today,d.id+'_today.pdf','Today')}${dl(sc.yesterday,d.id+'_yesterday.pdf','Yesterday'+(sc.ylabel||''))}${dl(sc.week,d.id+'_week.pdf','Last 7 days')}</div></div>`;
 }
+/* ---------- V5: Team Huddle cards (live, inline page + HTML download) ---------- */
+const HUDDLE_KINDS={
+ morning:{tag:'Morning Huddle',lead:"Set the tone for the day — here's where we stand and what we're aiming for."},
+ half:{tag:'Half-Time Huddle',lead:'Know the score — where are we versus target and the region right now?'},
+ close:{tag:'3:30 Huddle',lead:"Final push — here's what it takes to finish the day at target."}
+};
+const HUDDLE_CSS=`
+.hud{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;max-width:940px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 18px 50px rgba(15,23,42,.3);color:#0F172A}
+.hud .hh{background:#14273F;color:#fff;border-left:6px solid #D0342C;padding:16px 22px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:8px}
+.hud .hh .b{font-weight:800;font-size:1.25rem;letter-spacing:-.3px}
+.hud .hh .b small{display:block;color:#9FB4CC;font-weight:700;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;margin-top:3px}
+.hud .hh .r{text-align:right;font-size:.82rem;line-height:1.5}
+.hud .hh .r b{font-size:1rem}.hud .hh .r small{color:#9FB4CC}
+.hud .lead{padding:12px 22px;background:#F7F9FC;color:#33415C;font-size:.9rem;font-weight:600;border-bottom:1px solid #E2E7EE}
+.hud .kg{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px 22px}
+@media(max-width:640px){.hud .kg{grid-template-columns:1fr}}
+.hud .kt{border:1px solid #E2E7EE;border-radius:12px;padding:12px 14px}
+.hud .kt .kl{font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:#5B6472;font-weight:800}
+.hud .kt .kv{font-size:1.9rem;font-weight:800;letter-spacing:-.5px;line-height:1.15;margin-top:2px}
+.hud .kt .ktar{font-size:.72rem;color:#5B6472;font-weight:700}
+.hud .badge{display:inline-block;background:#E7F3EC;color:#158A5A;font-size:.58rem;font-weight:800;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
+.hud .bars{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.hud .br{display:grid;grid-template-columns:52px 1fr 56px;align-items:center;gap:8px}
+.hud .br .bn{font-size:.64rem;color:#5B6472;font-weight:700}
+.hud .br .tk{position:relative;height:9px;background:#EEF1F5;border-radius:5px;overflow:hidden}
+.hud .br .fl{position:absolute;left:0;top:0;height:9px;border-radius:5px}
+.hud .br .bv{font-size:.68rem;font-weight:800;text-align:right}
+.hud .need{margin-top:9px;font-size:.76rem;font-weight:700;color:#14273F;background:#FBF4E9;border-radius:8px;padding:6px 9px}
+.hud .cl{padding:4px 22px 20px}
+.hud .cl h4{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:#5B6472;margin:12px 0 8px}
+.hud .clg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:640px){.hud .clg{grid-template-columns:1fr}}
+.hud .ci{font-size:.8rem;font-weight:600;padding:6px 10px;border-radius:8px;display:flex;gap:7px;align-items:flex-start}
+.hud .ci.ok{background:#E7F3EC;color:#136A46}.hud .ci.no{background:#FBEAE9;color:#A32820}
+.hud .ci .m{font-weight:900}
+.hud .ft{padding:10px 22px 16px;color:#8A93A2;font-size:.68rem;border-top:1px solid #E2E7EE}
+`;
+function hudColor(s){return s==='g'?'#158A5A':(s==='a'?'#B57611':(s==='r'?'#D0342C':'#5B6472'));}
+function hudFmt(f,v){if(v==null)return '—';if(f==='money0')return '$'+Math.round(v);if(f==='pct')return Math.round(v)+'%';if(f==='lhpc')return (+v).toFixed(2);return Math.round(v);}
+function hudKpiTile(k){const col=hudColor(k.status);
+ const vals=[k.you,k.region,k.target].filter(v=>v!=null);const mx=Math.max.apply(null,vals.concat([1]))*1.25;
+ const bar=(nm,val,color)=>{const w=val!=null?Math.max(2,Math.min(100,val/mx*100)):0;return `<div class="br"><span class="bn">${nm}</span><div class="tk"><span class="fl" style="width:${w}%;background:${color}"></span></div><span class="bv" style="color:${color}">${hudFmt(k.fmt,val)}</span></div>`;};
+ const onT=k.status==='g'?'<span class="badge">on target ✓</span>':'';
+ return `<div class="kt"><div class="kl">${k.label}${onT}</div>
+  <div class="kv" style="color:${col}">${hudFmt(k.fmt,k.you)}</div>
+  <div class="ktar">target ${hudFmt(k.fmt,k.target)}</div>
+  <div class="bars">${bar('You',k.you,col)}${bar('Region',k.region,'#2E6FB7')}${bar('Target',k.target,'#5B6472')}</div>
+  <div class="need">${k.need||''}</div></div>`;
+}
+function renderHuddleCard(kind,d){const H=d.huddle;if(!H)return '<div class="hud"><div class="lead">Huddle data isn\'t ready yet — refresh in a moment.</div></div>';
+ const meta=HUDDLE_KINDS[kind]||HUDDLE_KINDS.morning;
+ const done=H.done||[],todo=H.todo||[];
+ const kpis=(H.kpis||[]).map(hudKpiTile).join('');
+ const doneH=done.length?done.map(t=>`<div class="ci ok"><span class="m">✓</span><span>${t}</span></div>`).join(''):'<div class="ci ok"><span class="m">—</span><span>Nothing checked off yet.</span></div>';
+ const todoH=todo.length?todo.map(t=>`<div class="ci no"><span class="m">•</span><span>${t}</span></div>`).join(''):'<div class="ci ok"><span class="m">✓</span><span>Everything done — great work.</span></div>';
+ return `<div class="hud"><div class="hh"><div class="b">${meta.tag}<small>VantEdge Auto · Take 5 Team Huddle</small></div>
+   <div class="r"><b>${H.name||''} · #${H.id||''}</b><br>${H.regionName||''}<br><small>live as of ${H.asof||''} · ${H.date||''}</small></div></div>
+  <div class="lead">${meta.lead}</div>
+  <div class="kg">${kpis}</div>
+  <div class="cl"><h4>Today's checklist</h4><div class="clg"><div>${doneH}</div><div>${todoH}</div></div></div>
+  <div class="ft">Bars compare your store to the region average (anonymous) and the target. Green = at or above target. Live snapshot — refreshes with the dashboard.</div></div>`;
+}
+function huddleSection(d){if(!d.huddle)return '';
+ const b=(kind,label,sub)=>`<button class="hbtn" onclick="openHuddle('${kind}')"><span>${label}<small>${sub}</small></span><span class="go">Open ▸</span></button>`;
+ return `<div class="panel"><div class="mhead"><div class="acc" style="background:${C.red}"></div><span class="t">Team Huddle</span><span class="n">live discussion cards</span></div>
+  <div class="hbtns">${b('morning','Morning Huddle','Set the day · targets & region')}${b('half','Half-Time Huddle','Know the score at midday')}${b('close','3:30 Huddle','Final push to hit target')}</div></div>`;
+}
+function openHuddle(kind){closeHuddle();const d=(P.detail||{})[SEL];if(!d)return;
+ if(!document.getElementById('hudcss')){const s=document.createElement('style');s.id='hudcss';s.textContent=HUDDLE_CSS;document.head.appendChild(s);}
+ const ov=document.createElement('div');ov.className='hudov';ov.id='hudov';
+ ov.innerHTML=`<div class="hudbar"><button class="hudx dl" onclick="downloadHuddle('${kind}')">⬇ Download</button><button class="hudx cl" onclick="closeHuddle()">✕ Close</button></div>`+renderHuddleCard(kind,d);
+ ov.addEventListener('click',e=>{if(e.target===ov)closeHuddle();});
+ document.body.appendChild(ov);}
+function closeHuddle(){const o=document.getElementById('hudov');if(o)o.remove();}
+function downloadHuddle(kind){const d=(P.detail||{})[SEL];if(!d)return;const card=renderHuddleCard(kind,d);
+ const meta=HUDDLE_KINDS[kind]||HUDDLE_KINDS.morning;const nm=(d.huddle&&d.huddle.name)||'Store';
+ const doc='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+nm+' — '+meta.tag+'</title><style>body{margin:0;background:#F4F6F9;padding:22px}'+HUDDLE_CSS+'</style></head><body>'+card+'</body></html>';
+ const blob=new Blob([doc],{type:'text/html'});const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=url;a.download=(d.id||'store')+'_'+kind+'_huddle.html';document.body.appendChild(a);a.click();
+ setTimeout(function(){URL.revokeObjectURL(url);a.remove();},1500);}
 function storePicker(){if(STORE)return '';const regs=P.regions||{};let cur=PICKREG;
  if(!cur){for(const r in regs){if((regs[r]||[]).map(String).includes(String(SEL))){cur=r;break;}}cur=cur||Object.keys(regs)[0];}
  const nameOf=id=>{const row=(P.rows||[]).find(x=>String(x.id)===String(id));return row?row.name:id;};
@@ -482,18 +575,23 @@ function tog(id){const e=document.getElementById(id);if(!e)return;const open=!e.
  fitLater();}
 
 function lineTgt(v){return {type:'line',label:'Target',data:v,borderColor:C.red,borderDash:[2,3],borderWidth:1.6,pointRadius:0};}
+// Single-hour fix: a line segment needs two points to draw, so an ISOLATED reading (a
+// non-null value whose neighbors are null — e.g. only one hour of data so far) renders as
+// nothing. Give just those isolated points a visible dot so early-day charts (ARO especially)
+// always show something. Interior points on a real line stay dot-free (radius 0).
+function isoR(a){a=a||[];return a.map(function(v,i){if(v==null)return 0;var p=i>0?a[i-1]:null,n=i<a.length-1?a[i+1]:null;return (p==null&&n==null)?3.5:0;});}
 
 // The five main section charts — drawn once when the detail view renders.
 function drawMain(d){const L=d.hours;
  ['cars','net'].forEach(key=>{const m=d[key];if(!document.getElementById('c_'+key))return;
   mk('c_'+key,{data:{labels:L,datasets:[
-   {type:'line',label:'Actual',data:m.actual,borderColor:C.blue,backgroundColor:'rgba(46,111,183,.10)',fill:true,borderWidth:2.6,tension:.35},
+   {type:'line',label:'Actual',data:m.actual,borderColor:C.blue,backgroundColor:'rgba(46,111,183,.10)',fill:true,borderWidth:2.6,tension:.35,pointRadius:isoR(m.actual),pointBackgroundColor:C.blue},
    {type:'line',label:'Projected',data:m.est,borderColor:C.green,borderDash:[6,4],borderWidth:2.2,tension:.35},
    (m.target&&m.target.length)?lineTgt(m.target):{data:[]}]},
    options:{...G,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:C.line}}}}});
  });
  const a=d.aro;if(document.getElementById('c_aro'))mk('c_aro',{data:{labels:L,datasets:[
-   {type:'line',label:'ARO',data:a.run,borderColor:C.blue,backgroundColor:'rgba(46,111,183,.08)',fill:true,borderWidth:2.4,tension:.35},
+   {type:'line',label:'ARO',data:a.run,borderColor:C.blue,backgroundColor:'rgba(46,111,183,.08)',fill:true,borderWidth:2.4,tension:.35,pointRadius:isoR(a.run),pointBackgroundColor:C.blue},
    lineTgt(L.map(()=>a.target||125))]},options:{...G,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{
      // G9: add "Cars" (cumulative cars at that hour, from the Cars section series) below ARO + Target.
      afterBody:items=>{if(!items||!items.length)return '';const i=items[0].dataIndex;const cv=(d.cars&&d.cars.actual)?d.cars.actual[i]:null;return cv!=null?'Cars: '+Math.round(cv):'';}}}},scales:{x:{grid:{display:false}},y:{grid:{color:C.line}}}}});
@@ -501,13 +599,13 @@ function drawMain(d){const L=d.hours;
    // G6: dynamic y-max — 100 is the floor; grow above 100 if any attach value exceeds it so >100% is visible.
    const b4pk=Math.max(100,...(b.run||[]).filter(v=>v!=null),b.target||0);const b4max=Math.max(100,Math.ceil(b4pk/10)*10);
    mk('c_big4',{data:{labels:L,datasets:[
-   {type:'line',label:'Big 4 %',data:b.run,borderColor:C.teal,backgroundColor:'rgba(14,116,144,.10)',fill:true,borderWidth:2.4,tension:.35},
+   {type:'line',label:'Big 4 %',data:b.run,borderColor:C.teal,backgroundColor:'rgba(14,116,144,.10)',fill:true,borderWidth:2.4,tension:.35,pointRadius:isoR(b.run),pointBackgroundColor:C.teal},
    {type:'line',label:'goal',data:L.map(()=>b.target),borderColor:C.green,borderDash:[4,3],borderWidth:1.4,pointRadius:0}]},options:{...G,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:c=>c.dataset.label+': '+(c.parsed.y==null?'—':Math.round(c.parsed.y)+'%')}}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,max:b4max,grid:{color:C.line}}}}});}
  const l=d.lhpc;if(document.getElementById('c_lhpc'))mk('c_lhpc',{data:{labels:L,datasets:[
    // G2: per-hour labor hours (l.hours = per-period diff of cumulative labor hrs) as muted bars
    // BEHIND the lines, on an auto-scaled secondary right axis (y2). order:2 draws them first.
    {type:'bar',label:'labor hrs',data:l.hours,yAxisID:'y2',order:2,backgroundColor:'rgba(108,79,182,.16)',borderWidth:0},
-   {type:'line',label:'rolling',data:l.roll,borderColor:C.purple,borderWidth:2.4,tension:.35,order:0},
+   {type:'line',label:'rolling',data:l.roll,borderColor:C.purple,borderWidth:2.4,tension:.35,order:0,pointRadius:isoR(l.roll),pointBackgroundColor:C.purple},
    {type:'line',label:'target',data:L.map(()=>l.target),borderColor:C.red,borderDash:[2,3],borderWidth:1.4,pointRadius:0,order:1}]},
    options:{...G,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{display:false}},y:{min:0,max:5,grid:{color:C.line}},y2:{position:'right',beginAtZero:true,grid:{display:false}}}}});
 }
@@ -572,7 +670,7 @@ function drawHist(){const h=P.hist||{stores:[],days:[]};const sel=(h.stores||[])
     label:c=>{if(isTask)return c.dataset.label+': '+Math.round(c.parsed.y)+'% done';const arr=c.dataset.data;const t=arr[arr.length-1];const df=t?(((c.parsed.y-t)/t)*100).toFixed(0):0;return c.dataset.label+': '+(c.parsed.y==null?'—':Math.round(c.parsed.y))+' ('+(df>=0?'+':'')+df+'% vs today)';},
     afterLabel:c=>{if(!isTask)return '';const it=(c.dataset._items||[])[c.dataIndex]||[];return it.length?('Done: '+it.join(', ')):'None done';}}}},
    scales:{x:{grid:{display:false}},y:{grid:{color:C.line},suggestedMax:isTask?100:undefined,beginAtZero:isTask}}},plugins:[box]});
- document.getElementById('htab').innerHTML='<table><thead><tr><th>Store</th><th>Last-week avg</th><th>Today</th><th>Δ vs last wk</th></tr></thead><tbody>'+sel.map(s=>{const arr=s.metrics[HMETRIC];const t=arr[arr.length-1];const prev=arr.slice(0,-1).filter(v=>v!=null);const avg=prev.length?prev.reduce((a,b)=>a+b,0)/prev.length:0;const df=avg?(((t-avg)/avg)*100).toFixed(0):0;return `<tr><td>${s.name}</td><td>${Math.round(avg)}</td><td>${t==null?'—':Math.round(t)}</td><td class="${df>=0?'pos':'neg'}">${df>=0?'+':''}${df}%</td></tr>`;}).join('')+'</tbody></table>';
+ document.getElementById('htab').innerHTML='<table><thead><tr><th>Store</th><th>Last-week avg</th><th>Today</th><th>Δ vs last wk</th></tr></thead><tbody>'+sel.map(s=>{const arr=s.metrics[HMETRIC];const t=arr[arr.length-1];const cars=s.metrics.cars||[];const ratio=(HMETRIC==='aro'||HMETRIC==='big4'||HMETRIC==='lhpc');let avg;if(ratio){let nu=0,de=0;for(let i=0;i<arr.length-1;i++){const v=arr[i],w=cars[i];if(v!=null&&w){nu+=v*w;de+=w;}}avg=de?nu/de:0;}else{const prev=arr.slice(0,-1).filter(v=>v!=null);avg=prev.length?prev.reduce((a,b)=>a+b,0)/prev.length:0;}const df=avg?(((t-avg)/avg)*100).toFixed(0):0;return `<tr><td>${s.name}</td><td>${Math.round(avg)}</td><td>${t==null?'—':Math.round(t)}</td><td class="${df>=0?'pos':'neg'}">${df>=0?'+':''}${df}%</td></tr>`;}).join('')+'</tbody></table>';
 }
 // Iframe auto-fit: report TRUE content height to the parent iframe (same-origin, so
 // window.frameElement is reachable). The old version fired once ~90ms after render, which

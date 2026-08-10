@@ -251,11 +251,23 @@ def validate(d):
         problems.append("no line items parsed")
     if d.get("net_sales") is None:
         problems.append("net_sales missing")
-    if d.get("line_items") and d.get("sub_total") is not None:
-        s = sum(li["amount"] for li in d["line_items"] if li["amount"] is not None)
-        if abs(s - d["sub_total"]) > 0.02:
-            problems.append(f"line items sum {s:.2f} != sub_total {d['sub_total']:.2f}")
+    # NOTE: line-item vs Sub Total reconciliation is intentionally NOT fatal anymore — see
+    # reconcile_note(). A live AutoPoll report can momentarily not foot (a fee / charitable /
+    # shop-charge line lagging the printed Sub Total, or rounding), and cars/net/big4 are
+    # parsed independently of this sum. Rejecting over it black-holed store 1515 for a day
+    # (2026-08-04, $17 gap). The scraper now logs the mismatch but still saves the row.
     return problems
+
+
+def reconcile_note(d):
+    """Non-fatal data-quality signal: do the parsed line items foot to the printed Sub Total
+    (within 2c)? Returns a short message if not, else None. Deliberately separate from
+    validate() so a transient footing gap is logged and audited, not rejected."""
+    li = d.get("line_items"); st = d.get("sub_total")
+    if not li or st is None:
+        return None
+    s = round(sum(x["amount"] for x in li if x.get("amount") is not None), 2)
+    return f"line items sum {s:.2f} != sub_total {st:.2f}" if abs(s - st) > 0.02 else None
 
 
 if __name__ == "__main__":

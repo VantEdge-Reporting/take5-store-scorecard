@@ -20,7 +20,7 @@ from config import (BRAND, CENTRAL, STORE_CODES, CITY, REGIONS, DISTRICTS,
                     ARO_TARGET, LHPC_TARGET, BIG4_GOAL)
 import calc, dashboard, scorecard_pdf, identity, datastore, web
 from datasource import fetch_today, fetch_history, fetch_days, healthcheck
-from config import BIG4_TARGETS, DOW_FULL, TASKS_BY_DOW
+from config import BIG4_TARGETS, DOW_FULL, TASKS_BY_DOW, DM_TASKS_BY_DOW
 
 _sb_state = "expanded" if (st.session_state.get("auth") or (None,))[0] == "admin" else "collapsed"
 st.set_page_config(page_title=f"{BRAND} - Take 5 Scorecard", layout="wide",
@@ -343,6 +343,18 @@ def _web_detail(sp):
             "ops": sp.get("ops", [])}
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _peer_admin_row(store, stamp):
+    """V5: cheap today-only admin row for a region peer not otherwise in scope (used to
+    average a store's region for the Team Huddle). History is skipped (pace unused here),
+    so this is one light fetch per peer, cached with the same 5-min stamp as the payload."""
+    now = dt.datetime.now(CENTRAL)
+    try:
+        return calc.build_admin_row(store, CITY[store], fetch_today(store), [], now)
+    except Exception:
+        return None
+
+
 @st.cache_data(ttl=300, show_spinner="Loading dashboard…")
 def build_web_payload(tier, allowed, scope_label, stamp):
     now = dt.datetime.now(CENTRAL)
@@ -365,6 +377,8 @@ def build_web_payload(tier, allowed, scope_label, stamp):
         except Exception:
             comp_by_date[dd] = {}
     rows, detail, hstores, newest, idx = [], {}, [], None, 0
+    # V5: retain per-store pieces for the Team Huddle payload (built after region avgs below).
+    arow_by_store, sp_by_store, done_today = {}, {}, {}
     for s, td, hist, daily in fetched:
         try:
             sp = calc.build_store(s, CITY[s], region_of(s), td, hist, now, tgts.get(s))
@@ -376,6 +390,7 @@ def build_web_payload(tier, allowed, scope_label, stamp):
                      "pace": ar["pace"], "status": calc.st_pace(ar["pace"]), "heat": ar.get("heat"),
                      # H4: per-store net pace so the overview can aggregate a Total-net vs-4wk %
                      "netPace": sp["net"].get("pace_pct")})
+        arow_by_store[s] = ar; sp_by_store[s] = sp  # V5: for the huddle payload
         d = _web_detail(sp)
         d["messages"] = [{"from": m.get("from_user"), "body": m.get("body"),
                           "when": _fmt_sent(m.get("sent_at"))}
@@ -411,11 +426,45 @@ def build_web_payload(tier, allowed, scope_label, stamp):
             dc = (comp_by_date.get(dd) or {}).get(s, {})
             di = [t for t in tl if t in dc]
             tvals.append(round(len(di) / len(tl) * 100) if tl else 0); titems.append(di)
+        done_today[s] = titems[-1] if titems else []  # V5: today's completed store tasks
         metrics["task"] = tvals
         d["kpi"]["task"] = tvals[-1] if tvals else 0  # today's task completion % (6th KPI)
         hstores.append({"id": s, "name": f"{CITY[s]} {s}",
                         "color": _WEB_PALETTE[idx % len(_WEB_PALETTE)], "metrics": metrics,
                         "taskItems": titems}); idx += 1
+    # V5: anonymous region averages for the Team Huddle comparison column. For a store login
+    # (only its own store fetched) we pull the store's region peers via a cached helper so the
+    # store can still see how its region is doing. Never per-store — just a single benchmark.
+    ok_stores = list(sp_by_store.keys())
+    regions_needed = {region_of(s) for s in ok_stores if region_of(s)}
+    have = dict(arow_by_store)
+    for r in regions_needed:
+        for s in REGIONS.get(r, []):
+            if s not in have:
+                have[s] = _peer_admin_row(s, stamp)
+    region_avg = {}
+    for r in regions_needed:
+        acc = {"cars": [], "aro": [], "big4": [], "lhpc": []}
+        for s in REGIONS.get(r, []):
+            row = have.get(s)
+            if not row or row.get("cars") is None:
+                continue
+            for kk in acc:
+                if row.get(kk) is not None:
+                    acc[kk].append(row[kk])
+        region_avg[r] = {kk: (sum(v) / len(v) if v else None) for kk, v in acc.items()}
+    tl_today = TASKS_BY_DOW.get(now.weekday(), [])
+    for s in ok_stores:
+        sp = sp_by_store.get(s); d = detail.get(s)
+        if not sp or not d:
+            continue
+        r = region_of(s)
+        done_t = done_today.get(s, [])
+        todo_t = [t for t in tl_today if t not in set(done_t)]
+        d["huddle"] = {"name": CITY[s], "id": s, "regionName": r,
+                       "asof": now.strftime("%-I:%M %p"), "date": now.strftime("%A, %b %-d"),
+                       "kpis": calc.huddle_kpis(sp, region_avg.get(r, {})),
+                       "done": done_t, "todo": todo_t}
     liveR = [r for r in rows if r["cars"] is not None]
     tc = sum(r["cars"] for r in liveR); tn = sum(r["net"] or 0 for r in liveR)
     b4R = [r for r in liveR if r["big4"] is not None and r["cars"]]
@@ -663,6 +712,62 @@ def _daily_task_admin(user):
     st.markdown(html, unsafe_allow_html=True)
 
 
+def _dm_task_checklist(user):
+    """DM's own daily task checklist (district login 'My tasks'). Native checkboxes ->
+    task_completions, keyed by the DM's login CODE in place of a store number (same table,
+    DM task strings are distinct from store task strings so there's no collision)."""
+    code = user["code"]
+    now = dt.datetime.now(CENTRAL); today = now.strftime("%Y-%m-%d")
+    tasks = DM_TASKS_BY_DOW.get(now.weekday(), [])
+    try:
+        done = datastore.get_completions(today).get(code, {})
+    except Exception:
+        done = {}
+    n = len(tasks); c = sum(1 for t in tasks if t in done)
+    st.markdown("#### My tasks")
+    st.caption(f"{DOW_FULL[now.weekday()]} · {user.get('label','')} · {c}/{n} done"
+               + (f" · {round(c/n*100)}%" if n else ""))
+    if st.session_state.pop("_task_err", None):
+        st.error("A task didn't save — click it again.")
+    if not tasks:
+        st.caption("No DM tasks scheduled for today."); return
+    for i, t in enumerate(tasks):
+        k = f"dm_{code}_{today}_{i}"  # date + code in key so state resets each day
+        st.checkbox(t, value=(t in done), key=k,
+                    on_change=_task_toggle, args=(code, today, t, k, user.get("label")))
+
+
+def _dm_tracking_admin(user):
+    """Admin 'DM tracking' tab: DMs (rows) x today's DM tasks (cols), green checks + %
+    complete. Mirrors _daily_task_admin but over the DM codes + DM_TASKS_BY_DOW."""
+    now = dt.datetime.now(CENTRAL); today = now.strftime("%Y-%m-%d"); wd = now.weekday()
+    tasks = DM_TASKS_BY_DOW.get(wd, [])
+    st.markdown("#### DM tracking")
+    st.caption(f"{DOW_FULL[wd]} · {today} — green = complete")
+    try:
+        comp = datastore.get_completions(today)
+    except Exception:
+        comp = {}
+    def _pcol(p): return "#158A5A" if p >= 80 else ("#B57611" if p >= 50 else "#D0342C")
+    th = "".join(f"<th>{t}</th>" for t in tasks)
+    body = ""
+    for code, (label, stores) in DISTRICTS.items():
+        d = comp.get(code, {}); done = sum(1 for t in tasks if t in d)
+        pct = round(done / len(tasks) * 100) if tasks else 0
+        cells = "".join(('<td class="ok">&#10003;</td>' if t in d else "<td></td>") for t in tasks)
+        body += (f'<tr><td class="stn">{label} #{code}</td>'
+                 f'<td style="color:{_pcol(pct)};font-weight:700">{pct}%</td>{cells}</tr>')
+    html_s = ("<style>table.dtm{border-collapse:collapse;font-size:.76rem;width:100%}"
+              "table.dtm th,table.dtm td{border:1px solid #E2E7EE;padding:5px 7px;text-align:center;white-space:nowrap}"
+              "table.dtm th{background:#F7F9FC;color:#5B6472;font-size:.62rem;text-transform:uppercase}"
+              "table.dtm td.stn,table.dtm th.stn{text-align:left;font-weight:600}"
+              "table.dtm td.ok{background:#E7F3EC;color:#158A5A;font-weight:800}"
+              ".dtwrap{overflow-x:auto}</style>"
+              f'<div class="dtwrap"><table class="dtm"><thead><tr><th class="stn">DM</th>'
+              f"<th>%</th>{th}</tr></thead><tbody>{body}</tbody></table></div>")
+    st.markdown(html_s, unsafe_allow_html=True)
+
+
 def _messages_admin(user):
     """Admin/DM Messages tab: compose a one-way message to a single store + recent-sent list.
     G5: DM is scoped to its own stores; admin keeps all 15."""
@@ -894,8 +999,8 @@ def main():
         # G5: DM (district) also gets Daily task + Messages, scoped to its own stores.
         # Targets stays admin-only.
         items = (["Overview", "Store detail", "Historical"]
-                 + (["Daily task", "Targets", "Messages"] if role == "admin"
-                    else ["Daily task", "Messages"] if role == "district" else []))
+                 + (["Daily task", "DM tracking", "Targets", "Messages"] if role == "admin"
+                    else ["My tasks", "Daily task", "Messages"] if role == "district" else []))
         with st.sidebar:
             st.markdown("<div class='navbrand'>VantEdge Auto<span>Take 5 · Scorecard</span></div>",
                         unsafe_allow_html=True)
@@ -908,6 +1013,12 @@ def main():
             return
         if section == "Daily task":
             _daily_task_admin(user)
+            return
+        if section == "DM tracking":
+            _dm_tracking_admin(user)
+            return
+        if section == "My tasks":
+            _dm_task_checklist(user)
             return
         startview = {"Overview": "overview", "Store detail": "detail", "Historical": "hist"}[section]
 
