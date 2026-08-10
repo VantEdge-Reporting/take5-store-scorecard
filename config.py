@@ -36,6 +36,20 @@ TASKS_BY_DOW = {
   5: ['Teams Post (4 pictures)','Inventory count','Morning Huddle','Opening checklist','PD NONOC check','3 Email/phone NPS','Check Applicants','Update Spiff Report','Check Cashlog','Verify closing CL','Depth Chart update','Scan invoices','Time card Review','Schedule complete'],
   6: ['Teams Post (4 pictures)','Inventory count','Morning Huddle','Opening checklist','PD NONOC check','3 Email/phone NPS','Check Applicants','Update Spiff Report','Check Cashlog','Verify closing CL','Depth Chart update','Scan invoices','Time card Review'],
 }
+# V5: DM (district manager) daily task checklist, per weekday (Mon=0). Extracted from
+# 'DM Daily Check list.xlsx' (weekday x time-of-day grid, flattened to an ordered list per
+# day; blank/placeholder cells dropped, wording lightly normalized). One standard DM list
+# shared by all DMs. Stored/tracked exactly like TASKS_BY_DOW (task_completions table, keyed
+# by the DM's login code in place of a store number). Update here if the planner changes.
+DM_TASKS_BY_DOW = {
+  0: ['Verify all shops are opened on time','Morning Huddle with SMs','Update labor/depth chart in Teams','Timecards reviewed','Daily Metrics Review and recap sent to Jason','Build your weekly schedule','Camera audits','Half time show (know the score)','Verify schedules and staffing review','1:1 Shop Manager','Planning for district meeting','Weekly district meeting with SM',"Verify all shops aren't closing early"],
+  1: ['Verify all shops are opened on time','Morning Huddle with ASMs','Update labor/depth chart in Teams','Timecards reviewed','Daily recap sent to Jason','Verify morning pics in Teams','Leadership morning Huddle','Camera audits','Half time show (know the score)','1:1 Shop Manager','Huddle before SM leave',"Verify all shops aren't closing early"],
+  2: ['Verify all shops are opened on time','Morning Huddle with SMs','Update labor/depth chart in Teams','Timecards reviewed','Daily recap sent to Jason','Verify morning pics in Teams','Leadership morning Huddle','Camera audits','Half time show (know the score)','1:1 Shop Manager','Huddle before SM leave',"Verify all shops aren't closing early"],
+  3: ['Verify all shops are opened on time','Morning Huddle with SMs','Update labor/depth chart in Teams','Timecards reviewed','Daily recap sent to Jason','Verify morning pics in Teams','Leadership morning Huddle','Camera audits','Half time show (know the score)','1:1 Shop Manager','Huddle before SM leave',"Verify all shops aren't closing early"],
+  4: ['Verify all shops are opened on time','Morning Huddle with SMs','Update labor/depth chart in Teams','Timecards reviewed','Daily recap sent to Jason','Verify morning pics in Teams','Leadership morning Huddle','Camera audits','Half time show (know the score)','1:1 Shop Manager','Huddle before SM leave',"Verify all shops aren't closing early"],
+  5: ['Verify all shops are opened on time','Morning Huddle with SMs','Update labor/depth chart in Teams','Timecards reviewed','Daily recap sent to Jason','Verify morning pics in Teams','Camera audits','Half time show (know the score)','Huddle before SM leave',"Verify all shops aren't closing early"],
+  6: ['Verify all shops are opened on time','Morning Huddle with SMs','Verify morning pics in Teams','Half time show check-in'],
+}
 HIST_DAYS = 400                       # wide: section-9 picks the recent 4 same-weekdays.
 # NOTE (V3): the seeded baseline is ~1yr old summer data, so this window MUST stay
 # wide or the norms go empty. The review's "45-day cap" would delete the baseline;

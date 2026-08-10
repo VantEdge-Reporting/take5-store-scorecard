@@ -644,3 +644,108 @@ def drivers_for_aro(latest, aro_sofar, aro_target, aro_norm, big4_items, cars):
                      "data":[{"name":"Today","val":round(aro_sofar,2)},{"name":"4-wk","val":round(aro_norm,2)}]}})
     out.sort(key=lambda d:d["score"],reverse=True)
     return out
+
+
+# ================= V5: Team Huddle card (pure logic) =================
+def huddle_kpis(sp, region_avg=None):
+    """Four-KPI huddle snapshot for one store, built from a calc.build_store payload `sp`
+    plus this store's region averages `region_avg` = {cars,aro,big4,lhpc} (each may be None,
+    already anonymized — a single benchmark number, never a per-store callout).
+
+    Each KPI: you (today so far), region (region avg so far), target, a green/amber/red
+    status, whether lower is better, and a short encouraging 'need' line describing the gap
+    to target for the rest of the day. Numbers only — the styling/graphics live in web.py."""
+    region_avg = region_avg or {}
+    cars, aro, big4, lhpc = sp["cars"], sp["aro"], sp["big4"], sp["lhpc"]
+    out = []
+
+    # 1) Cars — cumulative; status is pace vs the 4-week normal; need = cars still to target.
+    you = cars.get("sofar"); tgt = cars.get("tgt"); proj = cars.get("est_close")
+    if you is None:
+        need = "No cars in yet — get the first ROs rolling."
+    elif tgt is None:
+        need = "Keep the bays moving."
+    else:
+        rem = max(0, round(tgt - you))
+        need = (f"{rem} more cars to reach {round(tgt)}" if rem > 0 else "Target reached — keep it rolling.")
+    out.append({"key": "cars", "label": "Cars", "you": round(you) if you is not None else None,
+                "region": (round(region_avg["cars"]) if region_avg.get("cars") is not None else None),
+                "target": round(tgt) if tgt is not None else None, "fmt": "int",
+                "status": st_pace(cars.get("pace_pct")), "lowerBetter": False,
+                "proj": round(proj) if proj is not None else None, "need": need})
+
+    # 2) ARO — rate vs the $ target any time of day.
+    you = aro.get("sofar"); tgt = aro.get("target") or ARO_TARGET
+    status = "flat" if you is None else ("g" if you >= tgt else ("a" if you >= tgt * 0.94 else "r"))
+    if you is None:
+        need = "No completed tickets yet today."
+    else:
+        gap = tgt - you
+        need = (f"At or above ${round(tgt)} — protect it." if gap <= 0
+                else f"Lift ~${round(gap)}/car to reach ${round(tgt)}.")
+    out.append({"key": "aro", "label": "ARO", "you": round(you) if you is not None else None,
+                "region": (round(region_avg["aro"]) if region_avg.get("aro") is not None else None),
+                "target": round(tgt), "fmt": "money0", "status": status,
+                "lowerBetter": False, "need": need})
+
+    # 3) Big 4 attach % vs the 53% goal; need = units to attach on the projected car count.
+    you = big4.get("pct"); tgt = big4.get("target") or BIG4_GOAL; units = big4.get("units") or 0
+    status = st_big4(you)
+    if you is None:
+        need = "No Big 4 attached yet — first upsells set the tone."
+    elif you >= tgt:
+        need = f"At or above the {round(tgt)}% goal — great work."
+    else:
+        projcars = cars.get("est_close") or cars.get("sofar") or 0
+        need_units = max(0, round(tgt / 100.0 * projcars) - units)
+        need = (f"Attach ~{need_units} more Big 4 to reach {round(tgt)}%" if need_units > 0
+                else f"Push toward the {round(tgt)}% goal.")
+    out.append({"key": "big4", "label": "Big 4", "you": round(you) if you is not None else None,
+                "region": (round(region_avg["big4"]) if region_avg.get("big4") is not None else None),
+                "target": round(tgt), "fmt": "pct", "status": status,
+                "lowerBetter": False, "need": need})
+
+    # 4) Labor hours per car (LHPC) — LOWER is leaner/better.
+    you = lhpc.get("day"); tgt = lhpc.get("target") or LHPC_TARGET
+    status = st_lhpc(you)
+    if you is None:
+        need = "No labor logged yet today."
+    elif you <= tgt:
+        need = f"Lean at {you:.2f} — hold it."
+    else:
+        need = f"Ease labor toward {tgt:.2f}/car."
+    out.append({"key": "lhpc", "label": "Labor / car", "you": round(you, 2) if you is not None else None,
+                "region": (round(region_avg["lhpc"], 2) if region_avg.get("lhpc") is not None else None),
+                "target": round(tgt, 2), "fmt": "lhpc", "status": status,
+                "lowerBetter": True, "need": need})
+    return out
+
+
+def huddle_hourly(today_rows, hist, now):
+    """Per-hour cars for the huddle chart, aligned to the store's open hours for today's
+    weekday: `avg` = typical cars each hour (recency-weighted 4-week same-weekday average,
+    the same normal-day shape the projection uses) drawn as bars; `today` = today's actual
+    cars that hour (None for hours not yet reached); `proj` = projected cars for the rest of
+    the day (starts at the current hour so the line connects to actual). Lets the team see
+    what a normal <weekday> looks like hour by hour and where today sits against it."""
+    weekday = now.weekday(); o, c = HOURS[weekday]; hours = list(range(o, c + 1))
+    now_hour = data_now_hour(today_rows, o, c)
+    td = row_date(today_rows[-1]) if today_rows else None
+    wn = weighted_norm(hist, weekday, "cars", td)
+    tpp = to_per_period(cum_by_hour(today_rows, "cars"))
+    ccum = cum_by_hour(today_rows, "cars")
+    sofar = ccum[max(ccum)] if ccum else 0.0
+    wf = sum(wn.get(h, 0) for h in hours if h <= now_hour)
+    pf = _clamp(sofar / wf) if wf else 1.0
+    avg = [round(wn.get(h, 0.0), 1) for h in hours]
+    today = [(round(tpp.get(h, 0.0), 1) if h <= now_hour else None) for h in hours]
+    proj = []
+    for h in hours:
+        if h < now_hour:
+            proj.append(None)
+        elif h == now_hour:
+            proj.append(round(tpp.get(h, 0.0), 1))   # connect to today's actual
+        else:
+            proj.append(round(wn.get(h, 0.0) * pf, 1))
+    return {"labels": [hour_label(h) for h in hours], "avg": avg, "today": today, "proj": proj,
+            "nowIdx": (hours.index(now_hour) if now_hour in hours else None)}
