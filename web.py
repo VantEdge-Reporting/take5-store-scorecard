@@ -424,13 +424,16 @@ const HUDDLE_CSS=`
 .hud .kt .kv{font-size:1.9rem;font-weight:800;letter-spacing:-.5px;line-height:1.15;margin-top:2px}
 .hud .kt .ktar{font-size:.7rem;color:#5B6472;font-weight:700}
 .hud .badge{display:inline-block;background:#E7F3EC;color:#158A5A;font-size:.58rem;font-weight:800;padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
-.hud .blt{position:relative;height:16px;background:#EEF1F5;border-radius:8px;margin-top:10px}
-.hud .blt .zone{position:absolute;top:0;bottom:0;background:rgba(21,138,90,.16)}
-.hud .blt .bfill{position:absolute;left:0;top:0;bottom:0;border-radius:8px}
-.hud .blt .tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:#0F172A}
-.hud .blt .reg{position:absolute;top:50%;width:11px;height:11px;background:#2E6FB7;border:2px solid #fff;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 1px #2E6FB7}
-.hud .need{margin-top:10px;font-size:.75rem;font-weight:700;color:#14273F;background:#FBF4E9;border-radius:8px;padding:6px 9px}
-.hud .bltleg{padding:2px 22px 6px;display:flex;gap:14px;font-size:.64rem;color:#5B6472;font-weight:700;flex-wrap:wrap}
+.hud .gg{position:relative;height:15px;background:#EEF1F5;border-radius:8px;margin-top:24px}
+.hud .gg .ggfill{position:absolute;left:0;top:0;bottom:0;border-radius:8px}
+.hud .gg .ggt{position:absolute;top:-4px;bottom:-4px;width:2px;background:#0F172A}
+.hud .gg .ggl{position:absolute;top:-16px;transform:translateX(-50%);font-size:.55rem;font-weight:800;color:#0F172A;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.hud .ggax{position:relative;height:13px;margin-top:5px;border-top:1px solid #E2E7EE}
+.hud .ggax span{position:absolute;top:2px;font-size:.58rem;font-weight:700;color:#8A93A2}
+.hud .ggax span.gm{width:1px;height:3px;background:#CBD5E1;top:-1px;padding:0}
+.hud .dir{font-size:.56rem;font-weight:800;color:#5B6472;margin-left:6px;text-transform:none}
+.hud .need{margin-top:8px;font-size:.75rem;font-weight:700;color:#14273F;background:#FBF4E9;border-radius:8px;padding:6px 9px}
+.hud .bltleg{padding:2px 22px 8px;font-size:.66rem;color:#5B6472;font-weight:700}
 .hud .chartwrap{padding:8px 22px 6px}
 .hud .cwh{font-size:.74rem;font-weight:800;color:#14273F;margin-bottom:4px}
 .hud .cleg{display:flex;gap:16px;justify-content:center;font-size:.66rem;font-weight:700;color:#5B6472;margin-top:4px}
@@ -453,25 +456,30 @@ const HUDDLE_CSS=`
 `;
 function hudColor(s){return s==='g'?'#158A5A':(s==='a'?'#B57611':(s==='r'?'#D0342C':'#5B6472'));}
 function hudFmt(f,v){if(v==null)return '—';if(f==='money0')return '$'+Math.round(v);if(f==='pct')return Math.round(v)+'%';if(f==='lhpc')return (+v).toFixed(2);return Math.round(v);}
-function hudPct(v,scale){return v==null?null:Math.max(0,Math.min(100,v/scale*100));}
-// Bullet gauge per KPI: your value as a colored fill, target as a dark tick, region avg as a
-// blue dot, and a shaded "good" zone (above target for higher-better KPIs; below target for
-// labor). Reads at a glance and never leaves the target as an under-filled bar.
-function hudBullet(k){const col=hudColor(k.status);const lb=k.lowerBetter;
- const you=k.you,reg=k.region,tgt=k.target;
- const base=Math.max(you||0,reg||0,tgt||0,1);
- const scale=lb?base*1.5:(tgt!=null?Math.max(base,tgt)*1.35:base*1.3);
- const yp=hudPct(you,scale),tp=hudPct(tgt,scale),rp=hudPct(reg,scale);
- let zone='';if(tgt!=null){zone=lb?`<span class="zone" style="left:0;width:${tp}%"></span>`:`<span class="zone" style="left:${tp}%;right:0"></span>`;}
- const fill=you!=null?`<span class="bfill" style="width:${yp}%;background:${col}"></span>`:'';
- const tick=tgt!=null?`<span class="tick" style="left:${tp}%"></span>`:'';
- const reg2=reg!=null?`<span class="reg" style="left:${rp}%"></span>`:'';
+// Round a max up to a clean axis number (1/2/5/10 x 10^n; 0.25 steps for LHPC).
+function hudNice(v,fmt){if(!(v>0))return 1;if(fmt==='lhpc')return Math.ceil(v*4)/4;
+ const p=Math.pow(10,Math.floor(Math.log10(v)));const n=v/p;const m=n<=1?1:(n<=2?2:(n<=5?5:10));return m*p;}
+// One gauge per KPI: a single value bar on its OWN numeric scale (axis with numbers below),
+// with the target marked as a labeled line. Colour is the verdict (green = meeting target).
+// Labor is lower-is-better (noted on the tile). Region average is plain text, not a marker,
+// so the bar itself carries just two things: your value and the target line.
+function hudGauge(k){const col=hudColor(k.status);const lb=k.lowerBetter;
+ const you=k.you,tgt=k.target,reg=k.region;
+ const vals=[you,tgt,reg].filter(v=>v!=null);
+ let smax=vals.length?hudNice(Math.max.apply(null,vals)*1.1,k.fmt):1;if(!(smax>0))smax=1;
+ const pos=v=>v==null?null:Math.max(0,Math.min(100,v/smax*100));
+ const yp=pos(you),tp=pos(tgt);
+ const fill=you!=null?`<span class="ggfill" style="width:${yp}%;background:${col}"></span>`:'';
+ const tick=tgt!=null?`<span class="ggt" style="left:${tp}%"></span><span class="ggl" style="left:${tp}%">target</span>`:'';
  const badge=k.status==='g'?'<span class="badge">on target ✓</span>':'';
+ const dir=lb?'<span class="dir">↓ lower is better</span>':'';
  const tgtTxt=tgt!=null?((lb?'≤':'')+hudFmt(k.fmt,tgt)):'—';
- return `<div class="kt"><div class="kl">${k.label}${badge}</div>
+ const regTxt=reg!=null?(' · region '+hudFmt(k.fmt,reg)):'';
+ const ax=`<div class="ggax"><span style="left:0">0</span><span style="left:50%;transform:translateX(-50%)">${hudFmt(k.fmt,smax/2)}</span><span style="left:100%;transform:translateX(-100%)">${hudFmt(k.fmt,smax)}</span><span class="gm" style="left:25%"></span><span class="gm" style="left:75%"></span></div>`;
+ return `<div class="kt"><div class="kl">${k.label}${badge}${dir}</div>
   <div class="kv" style="color:${col}">${hudFmt(k.fmt,you)}</div>
-  <div class="ktar">target ${tgtTxt} · region ${hudFmt(k.fmt,reg)}</div>
-  <div class="blt">${zone}${fill}${reg2}${tick}</div>
+  <div class="ktar">target ${tgtTxt}${regTxt}</div>
+  <div class="gg">${fill}${tick}</div>${ax}
   <div class="need">${k.need||''}</div></div>`;
 }
 // Inline SVG (no chart lib -> works in the downloaded file offline): typical cars/hour for
@@ -485,14 +493,14 @@ function hudHourChart(H){const L=(H&&H.labels)||[];if(!L.length)return '<div cla
  const X=i=>ml+step*i+step/2,Y=v=>mt+ph-(v/mx*ph);
  let g='';for(let t=0;t<=2;t++){const val=mx*t/2,y=Y(val);g+=`<line x1="${ml}" y1="${y.toFixed(1)}" x2="${W-mr}" y2="${y.toFixed(1)}" stroke="#E7ECF2" stroke-width="1"/><text x="${ml-4}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="9" fill="#8A93A2">${Math.round(val)}</text>`;}
  let bars='';avg.forEach((v,i)=>{if(v==null)return;const h=v/mx*ph;bars+=`<rect x="${(X(i)-bw/2).toFixed(1)}" y="${Y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0,h).toFixed(1)}" rx="2" fill="#B5D4F4"/>`;});
- let xl='';L.forEach((lab,i)=>{if(i%2===0)xl+=`<text x="${X(i).toFixed(1)}" y="${Ht-8}" text-anchor="middle" font-size="9" fill="#8A93A2">${lab}</text>`;});
+ let xl='';L.forEach((lab,i)=>{xl+=`<text x="${X(i).toFixed(1)}" y="${Ht-8}" text-anchor="middle" font-size="8" fill="#8A93A2">${lab}</text>`;});
  const poly=(arr,color,dash)=>{const pts=[];let dots='';arr.forEach((v,i)=>{if(v!=null){pts.push(X(i).toFixed(1)+','+Y(v).toFixed(1));dots+=`<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.6" fill="${color}"/>`;}});if(!pts.length)return '';return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2.4"${dash?' stroke-dasharray="6 4"':''}/>`+dots;};
  return `<svg viewBox="0 0 ${W} ${Ht}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block">${g}${bars}${poly(proj,'#158A5A',true)}${poly(today,'#2E6FB7',false)}<line x1="${ml}" y1="${mt+ph}" x2="${W-mr}" y2="${mt+ph}" stroke="#CBD5E1"/>${xl}</svg>`;
 }
 function renderHuddleCard(kind,d){const H=d.huddle;if(!H)return '<div class="hud"><div class="lead">Huddle data isn\'t ready yet — refresh in a moment.</div></div>';
  const meta=HUDDLE_KINDS[kind]||HUDDLE_KINDS.morning;
  const wd=(H.date||'').split(',')[0]||'today';
- const kpis=(H.kpis||[]).map(hudBullet).join('');
+ const kpis=(H.kpis||[]).map(hudGauge).join('');
  const f=H.focus||{};const fcls=f.status==='r'?'fr':(f.status==='a'?'fa':'fg');
  const mo=H.momentum||{};const chips=[];
  chips.push(`<span>${mo.onTarget!=null?mo.onTarget:'—'} of ${mo.total||4} KPIs on target</span>`);
@@ -509,7 +517,7 @@ function renderHuddleCard(kind,d){const H=d.huddle;if(!H)return '<div class="hud
   <div class="focus ${fcls}"><div class="fl">#1 focus this huddle</div><div class="ft2"><b>${f.label||''}</b>${f.msg?(' — '+f.msg):''}</div></div>
   <div class="mom">${chips.join('')}</div>
   <div class="kg">${kpis}</div>
-  <div class="bltleg"><span>▮ your store</span><span>● region avg</span><span>│ target</span><span style="color:#158A5A">▨ target zone</span></div>
+  <div class="bltleg">Each bar is your current value on its own scale (numbers below the bar); the marked line is the <b>target</b>. Green = meeting target. Region average is noted above each bar for context.</div>
   <div class="chartwrap"><div class="cwh">Cars by hour — typical ${wd} (last 4 weeks) vs today</div>${hudHourChart(H.hourly||{})}
    <div class="cleg"><span class="lg1">Typical</span><span class="lg2">Today</span><span class="lg3">Projected</span></div></div>
   <div class="drv2"><h4>What's driving value</h4>${moversH}</div>
